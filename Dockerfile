@@ -19,15 +19,26 @@ RUN corepack enable && corepack prepare yarn@4.12.0 --activate
 
 WORKDIR /app
 
-# Copy workspace config and native package
+# Copy the FULL Cargo workspace (required for workspace dependencies)
+COPY Cargo.toml Cargo.lock ./
+COPY rust-toolchain.toml ./
+
+# Copy all Rust workspace members
+COPY packages/backend/native ./packages/backend/native
+COPY packages/common/native ./packages/common/native
+COPY packages/common/y-octo ./packages/common/y-octo
+COPY packages/frontend/native ./packages/frontend/native
+COPY packages/frontend/mobile-native ./packages/frontend/mobile-native
+
+# Copy yarn workspace files needed for the native package
 COPY package.json yarn.lock .yarnrc.yml ./
 COPY .yarn ./.yarn
-COPY packages/backend/native ./packages/backend/native
+COPY packages/backend/native/package.json ./packages/backend/native/
 
-# Install dependencies for native build
-RUN yarn workspaces focus @affine/server-native
+# Install JS dependencies for native build
+RUN yarn workspaces focus @affine/server-native --production=false
 
-# Build native module
+# Build native module for server
 WORKDIR /app/packages/backend/native
 RUN yarn build
 
@@ -60,7 +71,7 @@ COPY tools ./tools
 COPY tests ./tests
 
 # Copy native module from rust builder
-COPY --from=rust-builder /app/packages/backend/native/server-native.node ./packages/backend/native/
+COPY --from=rust-builder /app/packages/backend/native/server-native.*.node ./packages/backend/native/
 COPY --from=rust-builder /app/packages/backend/native/index.js ./packages/backend/native/
 COPY --from=rust-builder /app/packages/backend/native/index.d.ts ./packages/backend/native/
 
@@ -71,7 +82,7 @@ RUN yarn install
 COPY . .
 
 # Copy native module again (in case COPY . overwrote it)
-COPY --from=rust-builder /app/packages/backend/native/server-native.node ./packages/backend/native/
+COPY --from=rust-builder /app/packages/backend/native/server-native.*.node ./packages/backend/native/
 COPY --from=rust-builder /app/packages/backend/native/index.js ./packages/backend/native/
 COPY --from=rust-builder /app/packages/backend/native/index.d.ts ./packages/backend/native/
 
@@ -86,6 +97,9 @@ RUN yarn affine @affine/server build
 
 # Generate Prisma client
 RUN yarn workspace @affine/server prisma generate
+
+# Prepare production node_modules
+RUN yarn workspaces focus @affine/server --production
 
 # ------------------------------------------------------------------------------
 # Stage 3: Production image
@@ -114,8 +128,8 @@ COPY --from=builder /app/packages/frontend/admin/dist ./static/admin
 # Copy Prisma schema and migrations
 COPY --from=builder /app/packages/backend/server/prisma ./prisma
 
-# Copy node_modules (production only)
-COPY --from=builder /app/packages/backend/server/node_modules ./node_modules
+# Copy production node_modules
+COPY --from=builder /app/node_modules ./node_modules
 
 # Copy self-host scripts
 COPY --from=builder /app/packages/backend/server/scripts ./scripts
