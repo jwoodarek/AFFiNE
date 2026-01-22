@@ -10,7 +10,7 @@ env:
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build:
+  build-and-push:
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -43,19 +43,11 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           context: .
+          file: ./Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-  deploy:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - name: Deploy to Railway
-        run: |
-          curl -X POST "${{ secrets.RAILWAY_WEBHOOK_URL }}" \
-            -H "Content-Type: application/json" \
-            -d '{"type": "redeploy"}'
-        if: ${{ secrets.RAILWAY_WEBHOOK_URL != '' }}
+          # Give it plenty of time - first build is slow
+          timeout-minutes: 60

@@ -1,25 +1,134 @@
 # =============================================================================
-# AFFiNE Custom Build - For Development & Customization
+# AFFiNE - Full Build from Source
 # =============================================================================
-# Start from official image, layer your customizations on top
-# This is faster than building from scratch while still allowing changes
+# This builds the entire AFFiNE stack from your forked source code
+# Build time: ~15-30 minutes (cached rebuilds are faster)
 # =============================================================================
 
-FROM ghcr.io/toeverything/affine:stable
+# ------------------------------------------------------------------------------
+# Stage 1: Build native Rust modules
+# ------------------------------------------------------------------------------
+FROM rust:1.83-bookworm AS rust-builder
 
-# Your customizations go here
-# Example: Add custom config
-# COPY custom-config.json /root/.affine/config/
+# Install Node.js for napi-rs
+RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
+    apt-get install -y nodejs
+
+# Enable corepack for yarn
+RUN corepack enable && corepack prepare yarn@4.12.0 --activate
+
+WORKDIR /app
+
+# Copy workspace config and native package
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn ./.yarn
+COPY packages/backend/native ./packages/backend/native
+
+# Install dependencies for native build
+RUN yarn workspaces focus @affine/server-native
+
+# Build native module
+WORKDIR /app/packages/backend/native
+RUN yarn build
+
+# ------------------------------------------------------------------------------
+# Stage 2: Build frontend and backend
+# ------------------------------------------------------------------------------
+FROM node:22-bookworm AS builder
+
+# Install build tools
+RUN apt-get update && apt-get install -y \
+    python3 \
+    make \
+    g++ \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Enable corepack for yarn
+RUN corepack enable && corepack prepare yarn@4.12.0 --activate
+
+WORKDIR /app
+
+# Copy package files for dependency caching
+COPY package.json yarn.lock .yarnrc.yml ./
+COPY .yarn ./.yarn
+
+# Copy all package.json files for workspace resolution
+COPY packages ./packages
+COPY blocksuite ./blocksuite
+COPY tools ./tools
+COPY tests ./tests
+
+# Copy native module from rust builder
+COPY --from=rust-builder /app/packages/backend/native/server-native.node ./packages/backend/native/
+COPY --from=rust-builder /app/packages/backend/native/index.js ./packages/backend/native/
+COPY --from=rust-builder /app/packages/backend/native/index.d.ts ./packages/backend/native/
+
+# Install all dependencies
+RUN yarn install
+
+# Copy full source code
+COPY . .
+
+# Copy native module again (in case COPY . overwrote it)
+COPY --from=rust-builder /app/packages/backend/native/server-native.node ./packages/backend/native/
+COPY --from=rust-builder /app/packages/backend/native/index.js ./packages/backend/native/
+COPY --from=rust-builder /app/packages/backend/native/index.d.ts ./packages/backend/native/
+
+# Build frontend (web app)
+RUN yarn affine @affine/web build
+
+# Build admin panel
+RUN yarn affine @affine/admin build
+
+# Build server
+RUN yarn affine @affine/server build
+
+# Generate Prisma client
+RUN yarn workspace @affine/server prisma generate
+
+# ------------------------------------------------------------------------------
+# Stage 3: Production image
+# ------------------------------------------------------------------------------
+FROM node:22-bookworm-slim AS runner
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    openssl \
+    libjemalloc2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Enable jemalloc for better memory performance
+ENV LD_PRELOAD=libjemalloc.so.2
+
+WORKDIR /app
+
+# Copy built server
+COPY --from=builder /app/packages/backend/server/dist ./dist
+COPY --from=builder /app/packages/backend/server/package.json ./
+
+# Copy static frontend files
+COPY --from=builder /app/packages/frontend/apps/web/dist ./static
+COPY --from=builder /app/packages/frontend/admin/dist ./static/admin
+
+# Copy Prisma schema and migrations
+COPY --from=builder /app/packages/backend/server/prisma ./prisma
+
+# Copy node_modules (production only)
+COPY --from=builder /app/packages/backend/server/node_modules ./node_modules
+
+# Copy self-host scripts
+COPY --from=builder /app/packages/backend/server/scripts ./scripts
+
+# Create storage directories
+RUN mkdir -p /root/.affine/storage /root/.affine/config
 
 # Environment
 ENV NODE_ENV=production
 ENV AFFINE_SERVER_PORT=3010
 ENV AFFINE_SERVER_HOST=0.0.0.0
 
-# Create storage directories
-RUN mkdir -p /root/.affine/storage /root/.affine/config
-
 EXPOSE 3010
 
-# The base image has the correct entrypoint
-CMD ["sh", "-c", "node ./scripts/self-host-predeploy.js && node ./dist/index.js"]
+# Run migrations then start server
+CMD ["sh", "-c", "node ./scripts/self-host-predeploy.js && node ./dist/main.js"]
