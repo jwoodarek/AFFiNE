@@ -34,6 +34,11 @@ COPY packages/frontend/mobile-native ./packages/frontend/mobile-native
 WORKDIR /app/packages/backend/native
 RUN napi build --release --strip
 
+# Rename the output to match what index.js expects
+# napi produces: server-native.linux-x64-gnu.node (or similar)
+# index.js expects: server-native.node or server-native.x64.node
+RUN mv server-native.*.node server-native.node || true
+
 # ------------------------------------------------------------------------------
 # Stage 2: Build frontend and backend
 # ------------------------------------------------------------------------------
@@ -56,9 +61,8 @@ WORKDIR /app
 COPY . .
 
 # Copy native module from rust builder (overwrite source version)
-COPY --from=rust-builder /app/packages/backend/native/server-native.*.node ./packages/backend/native/
-COPY --from=rust-builder /app/packages/backend/native/index.js ./packages/backend/native/
-COPY --from=rust-builder /app/packages/backend/native/index.d.ts ./packages/backend/native/
+# Use the renamed generic .node file
+COPY --from=rust-builder /app/packages/backend/native/server-native.node ./packages/backend/native/
 
 # Install all dependencies
 RUN yarn install --inline-builds
