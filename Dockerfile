@@ -52,36 +52,21 @@ RUN corepack enable && corepack prepare yarn@4.12.0 --activate
 
 WORKDIR /app
 
-# Copy package files for dependency caching
-COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn ./.yarn
+# Copy EVERYTHING first (simpler, more reliable)
+COPY . .
 
-# Copy all package.json files for workspace resolution
-COPY packages ./packages
-COPY blocksuite ./blocksuite
-COPY tools ./tools
-COPY tests ./tests
-
-# Copy native module from rust builder
+# Copy native module from rust builder (overwrite source version)
 COPY --from=rust-builder /app/packages/backend/native/server-native.*.node ./packages/backend/native/
 COPY --from=rust-builder /app/packages/backend/native/index.js ./packages/backend/native/
 COPY --from=rust-builder /app/packages/backend/native/index.d.ts ./packages/backend/native/
 
 # Install all dependencies
-RUN yarn install
-
-# Copy full source code
-COPY . .
-
-# Copy native module again (in case COPY . overwrote it)
-COPY --from=rust-builder /app/packages/backend/native/server-native.*.node ./packages/backend/native/
-COPY --from=rust-builder /app/packages/backend/native/index.js ./packages/backend/native/
-COPY --from=rust-builder /app/packages/backend/native/index.d.ts ./packages/backend/native/
+RUN yarn install --inline-builds
 
 # Build frontend (web app)
 RUN yarn affine @affine/web build
 
-# Build admin panel
+# Build admin panel  
 RUN yarn affine @affine/admin build
 
 # Build server
@@ -117,7 +102,7 @@ COPY --from=builder /app/packages/frontend/admin/dist ./static/admin
 # Copy Prisma schema and migrations
 COPY --from=builder /app/packages/backend/server/prisma ./prisma
 
-# Copy production node_modules
+# Copy production node_modules  
 COPY --from=builder /app/node_modules ./node_modules
 
 # Copy self-host scripts
