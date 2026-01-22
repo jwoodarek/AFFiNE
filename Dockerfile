@@ -14,8 +14,8 @@ FROM rust:1.83-bookworm AS rust-builder
 RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - && \
     apt-get install -y nodejs
 
-# Enable corepack for yarn
-RUN corepack enable && corepack prepare yarn@4.12.0 --activate
+# Install napi-rs CLI globally
+RUN npm install -g @napi-rs/cli
 
 WORKDIR /app
 
@@ -30,17 +30,9 @@ COPY packages/common/y-octo ./packages/common/y-octo
 COPY packages/frontend/native ./packages/frontend/native
 COPY packages/frontend/mobile-native ./packages/frontend/mobile-native
 
-# Copy yarn workspace files needed for the native package
-COPY package.json yarn.lock .yarnrc.yml ./
-COPY .yarn ./.yarn
-COPY packages/backend/native/package.json ./packages/backend/native/
-
-# Install JS dependencies for native build
-RUN yarn workspaces focus @affine/server-native --production=false
-
-# Build native module for server
+# Build native module for server using napi directly
 WORKDIR /app/packages/backend/native
-RUN yarn build
+RUN napi build --release --strip
 
 # ------------------------------------------------------------------------------
 # Stage 2: Build frontend and backend
@@ -97,9 +89,6 @@ RUN yarn affine @affine/server build
 
 # Generate Prisma client
 RUN yarn workspace @affine/server prisma generate
-
-# Prepare production node_modules
-RUN yarn workspaces focus @affine/server --production
 
 # ------------------------------------------------------------------------------
 # Stage 3: Production image
