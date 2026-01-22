@@ -1,0 +1,11 @@
+[build]
+builder        = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+healthcheckPath         = "/api/healthz"
+healthcheckTimeout      = 300
+restartPolicyMaxRetries = 3
+restartPolicyType       = "on_failure"
+
+# Railway will inject PORT automatically

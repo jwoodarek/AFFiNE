@@ -1,0 +1,39 @@
+# ===========================================
+# AFFiNE Railway Environment Variables
+# ===========================================
+# Copy these to Railway's environment variables section
+# in your AFFiNE service settings
+
+# Database (Railway PostgreSQL - use the reference variable)
+# Format: postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+DATABASE_URL=${{Postgres.DATABASE_URL}}
+
+# Redis (Railway Redis - use the reference variables)
+REDIS_SERVER_HOST=${{Redis.REDIS_HOST}}
+REDIS_SERVER_PORT=${{Redis.REDIS_PORT}}
+REDIS_SERVER_PASSWORD=${{Redis.REDIS_PASSWORD}}
+
+# Server Configuration
+AFFINE_SERVER_HTTPS=true
+AFFINE_SERVER_HOST=${{RAILWAY_PUBLIC_DOMAIN}}
+AFFINE_SERVER_EXTERNAL_URL=https://${{RAILWAY_PUBLIC_DOMAIN}}
+
+# Disable indexer for simpler setup
+AFFINE_INDEXER_ENABLED=false
+
+# ===========================================
+# Optional: Email Configuration (for user auth emails)
+# ===========================================
+# MAILER_HOST=smtp.example.com
+# MAILER_PORT=465
+# MAILER_USER=your-email@example.com
+# MAILER_PASSWORD=your-password
+# MAILER_SENDER=AFFiNE <noreply@example.com>
+
+# ===========================================
+# Optional: OAuth Providers
+# ===========================================
+# OAUTH_GOOGLE_CLIENT_ID=
+# OAUTH_GOOGLE_CLIENT_SECRET=
+# OAUTH_GITHUB_CLIENT_ID=
+# OAUTH_GITHUB_CLIENT_SECRET=
